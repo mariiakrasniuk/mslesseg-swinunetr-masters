@@ -25,13 +25,11 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 MODEL_PATH = "best_swinunetr.pth"
 
-ID1= "P1"
-ID2= "T1"
+ID1 = "P25"
+ID2 = "T1"
 
-# IMAGE_PATH = f"MSLesSeg Dataset/train/{ID1}/{ID1}_{ID2}_FLAIR.nii.gz"
-# LABEL_PATH = f"MSLesSeg Dataset/train/{ID1}/{ID1}_{ID2}_MASK.nii.gz"
-IMAGE_PATH = "/home/dima/projects/mslesseg-swinunetr/MSLesSeg Dataset/train/P25/T1/P25_T1_FLAIR.nii.gz"
-LABEL_PATH = "/home/dima/projects/mslesseg-swinunetr/MSLesSeg Dataset/train/P25/T1/P25_T1_MASK.nii.gz"
+IMAGE_PATH = f"MSLesSeg_Dataset/train/{ID1}/{ID2}/{ID1}_{ID2}_FLAIR.nii.gz"
+LABEL_PATH = f"MSLesSeg_Dataset/train/{ID1}/{ID2}/{ID1}_{ID2}_MASK.nii.gz"
 
 ROI_SIZE = (96, 96, 96)
 SW_BATCH_SIZE = 2
@@ -42,7 +40,7 @@ SW_BATCH_SIZE = 2
 val_transform = Compose([
     LoadImaged(keys=["image", "label"]),
     EnsureChannelFirstd(keys=["image", "label"]),
-    Orientationd(keys=["image", "label"], axcodes="RAS", labels=None),
+    Orientationd(keys=["image", "label"], axcodes="RAS"),
     Spacingd(
         keys=["image", "label"],
         pixdim=(1, 1, 1),
@@ -190,8 +188,8 @@ plt.show()
 # MODEL_PATH = "best_swinunetr.pth"
 
 # # pick ONE example (test set recommended)
-# IMAGE_PATH = "MSLesSeg Dataset/test/P60/P60_FLAIR.nii.gz"
-# LABEL_PATH = "MSLesSeg Dataset/test/P60/P60_MASK.nii.gz"
+# IMAGE_PATH = "MSLesSeg_Dataset/test/P60/P60_FLAIR.nii.gz"
+# LABEL_PATH = "MSLesSeg_Dataset/test/P60/P60_MASK.nii.gz"
 
 # # ------------------
 # # Transforms (same as validation)
@@ -199,7 +197,7 @@ plt.show()
 # val_transform = Compose([
 #     LoadImaged(keys=["image", "label"]),
 #     EnsureChannelFirstd(keys=["image", "label"]),
-#     Orientationd(keys=["image", "label"], axcodes="RAS", labels=None),
+#     Orientationd(keys=["image", "label"], axcodes="RAS"),
 #     Spacingd(
 #         keys=["image", "label"],
 #         pixdim=(1, 1, 1),

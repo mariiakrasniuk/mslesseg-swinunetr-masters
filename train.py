@@ -1,20 +1,32 @@
+import argparse
 import torch
 import matplotlib.pyplot as plt
 from torch.optim import AdamW
 from tqdm import tqdm
 
-from monai.networks.nets import SwinUNETR
-from monai.losses import DiceLoss
 from monai.metrics import DiceMetric
 from monai.inferers import sliding_window_inference
 
 from dataloaders import get_loaders
 from splits import TRAIN_PATIENTS, VAL_PATIENTS
+from model import build_model
+
+# ------------------
+# Args
+# ------------------
+parser = argparse.ArgumentParser()
+parser.add_argument("--variant",  default="baseline",
+                    help="Model variant: baseline | wavelet_a | wavelet_b | "
+                         "wavelet_ab | wavelet_ab_freq")
+parser.add_argument("--run_name", default=None,
+                    help="Checkpoint/history filename prefix. Defaults to variant.")
+args = parser.parse_args()
+RUN_NAME = args.run_name or args.variant
 
 # ------------------
 # Config
 # ------------------
-ROOT = "MSLesSeg Dataset"
+ROOT = "MSLesSeg_Dataset"
 DEVICE = "cuda"
 EPOCHS = 70
 LR = 1e-4
@@ -34,20 +46,14 @@ train_loader, val_loader = get_loaders(
 )
 
 # ------------------
-# Model
+# Model + Loss
 # ------------------
-model = SwinUNETR(
-    spatial_dims=3,
-    in_channels=1,
-    out_channels=1,
-    feature_size=48,
-    use_checkpoint=True,
-).to(DEVICE)
+model, loss_fn = build_model(args.variant)
+model = model.to(DEVICE)
 
 # ------------------
-# Loss / Optim / Metrics
+# Optim / Metrics
 # ------------------
-loss_fn = DiceLoss(sigmoid=True)
 optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
 
 dice_metric = DiceMetric(include_background=False, reduction="mean")
@@ -144,7 +150,7 @@ for epoch in range(1, EPOCHS + 1):
     # ========= CHECKPOINT =========
     if val_dice > best_dice:
         best_dice = val_dice
-        torch.save(model.state_dict(), "best_swinunetr.pth")
+        torch.save(model.state_dict(), f"best_{RUN_NAME}.pth")
         print(f"New best model saved (Val Dice={best_dice:.4f})")
 
     # ========= EARLY STOPPING =========
@@ -169,7 +175,7 @@ torch.save(
         "train_dice": train_dice_history,
         "val_dice": val_dice_history,
     },
-    "training_history.pth",
+    f"training_history_{RUN_NAME}.pth",
 )
 
 # ------------------
@@ -184,7 +190,7 @@ plt.title("Training / Validation Loss")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("loss_curves.png", dpi=300)
+plt.savefig(f"loss_curves_{RUN_NAME}.png", dpi=300)
 plt.close()
 
 # ------------------
@@ -199,9 +205,9 @@ plt.title("Training / Validation Dice")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("dice_curves.png", dpi=300)
+plt.savefig(f"dice_curves_{RUN_NAME}.png", dpi=300)
 plt.close()
 
-print("Training history saved to training_history.pth")
-print("Loss curves saved to loss_curves.png")
-print("Dice curves saved to dice_curves.png")
+print(f"Training history saved to training_history_{RUN_NAME}.pth")
+print(f"Loss curves saved to loss_curves_{RUN_NAME}.png")
+print(f"Dice curves saved to dice_curves_{RUN_NAME}.png")

@@ -2,7 +2,7 @@ import nibabel as nib
 import numpy as np
 from build_datalist import build_train_list
 
-ROOT = "MSLesSeg Dataset"
+ROOT = "MSLesSeg_Dataset"
 PATIENTS = ["P1", "P2", "P3"]  # test on a few first
 
 data = build_train_list(ROOT, PATIENTS)
