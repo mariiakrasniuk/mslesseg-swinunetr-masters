@@ -1,20 +1,32 @@
+import argparse
 import torch
 import matplotlib.pyplot as plt
 from torch.optim import AdamW
 from tqdm import tqdm
 
-from monai.networks.nets import SwinUNETR
 from monai.losses import DiceLoss
 from monai.metrics import DiceMetric
 from monai.inferers import sliding_window_inference
 
+from model import build_model
 from dataloaders import get_loaders
 from splits import TRAIN_PATIENTS, VAL_PATIENTS
 
 # ------------------
+# Args
+# ------------------
+parser = argparse.ArgumentParser()
+parser.add_argument("--variant", type=str, default="baseline",
+                    choices=["baseline", "wavelet_a"],
+                    help="Model variant to train")
+args = parser.parse_args()
+
+VARIANT = args.variant
+
+# ------------------
 # Config
 # ------------------
-ROOT = "MSLesSeg Dataset"
+ROOT = "MSLesSeg_Dataset"
 DEVICE = "cuda"
 EPOCHS = 70
 LR = 1e-4
@@ -26,6 +38,15 @@ SW_BATCH_SIZE = 2
 PATIENCE = 10
 MIN_DELTA = 1e-4
 
+# Variant-aware output paths
+BEST_MODEL_PATH    = f"best_{VARIANT}.pth"
+HISTORY_PATH       = f"training_history_{VARIANT}.pth"
+LOSS_CURVE_PATH    = f"loss_curves_{VARIANT}.png"
+DICE_CURVE_PATH    = f"dice_curves_{VARIANT}.png"
+
+print(f"Variant: {VARIANT}")
+print(f"Best model will be saved to: {BEST_MODEL_PATH}")
+
 # ------------------
 # Data
 # ------------------
@@ -36,13 +57,7 @@ train_loader, val_loader = get_loaders(
 # ------------------
 # Model
 # ------------------
-model = SwinUNETR(
-    spatial_dims=3,
-    in_channels=1,
-    out_channels=1,
-    feature_size=48,
-    use_checkpoint=True,
-).to(DEVICE)
+model = build_model(VARIANT, use_checkpoint=True).to(DEVICE)
 
 # ------------------
 # Loss / Optim / Metrics
@@ -80,7 +95,7 @@ for epoch in range(1, EPOCHS + 1):
     steps = 0
 
     for batch in tqdm(train_loader, desc=f"Epoch {epoch} [train]"):
-        # batch is list of dicts (multi-patch)
+        # batch is list of dicts (multi-patch from RandCropByPosNegLabeld)
         for sample in batch:
             x = sample["image"].to(DEVICE)
             y = sample["label"].to(DEVICE)
@@ -144,7 +159,7 @@ for epoch in range(1, EPOCHS + 1):
     # ========= CHECKPOINT =========
     if val_dice > best_dice:
         best_dice = val_dice
-        torch.save(model.state_dict(), "best_swinunetr.pth")
+        torch.save(model.state_dict(), BEST_MODEL_PATH)
         print(f"New best model saved (Val Dice={best_dice:.4f})")
 
     # ========= EARLY STOPPING =========
@@ -153,7 +168,7 @@ for epoch in range(1, EPOCHS + 1):
         early_stop_counter = 0
     else:
         early_stop_counter += 1
-        print(f"⏸ EarlyStopping {early_stop_counter}/{PATIENCE}")
+        print(f"EarlyStopping {early_stop_counter}/{PATIENCE}")
 
     if early_stop_counter >= PATIENCE:
         print("Early stopping triggered")
@@ -169,7 +184,7 @@ torch.save(
         "train_dice": train_dice_history,
         "val_dice": val_dice_history,
     },
-    "training_history.pth",
+    HISTORY_PATH,
 )
 
 # ------------------
@@ -180,11 +195,11 @@ plt.plot(train_loss_history, label="Train Loss")
 plt.plot(val_loss_history, label="Val Loss")
 plt.xlabel("Epoch")
 plt.ylabel("Dice Loss")
-plt.title("Training / Validation Loss")
+plt.title(f"Training / Validation Loss [{VARIANT}]")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("loss_curves.png", dpi=300)
+plt.savefig(LOSS_CURVE_PATH, dpi=300)
 plt.close()
 
 # ------------------
@@ -195,13 +210,13 @@ plt.plot(train_dice_history, label="Train Dice")
 plt.plot(val_dice_history, label="Val Dice")
 plt.xlabel("Epoch")
 plt.ylabel("Dice Score")
-plt.title("Training / Validation Dice")
+plt.title(f"Training / Validation Dice [{VARIANT}]")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("dice_curves.png", dpi=300)
+plt.savefig(DICE_CURVE_PATH, dpi=300)
 plt.close()
 
-print("Training history saved to training_history.pth")
-print("Loss curves saved to loss_curves.png")
-print("Dice curves saved to dice_curves.png")
+print(f"Training history saved to {HISTORY_PATH}")
+print(f"Loss curves saved to {LOSS_CURVE_PATH}")
+print(f"Dice curves saved to {DICE_CURVE_PATH}")

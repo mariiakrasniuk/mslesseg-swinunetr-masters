@@ -1,13 +1,13 @@
-# evaluate_test.py
+import argparse
 import torch
 from tqdm import tqdm
-from monai.networks.nets import SwinUNETR
 from monai.metrics import DiceMetric
 from monai.losses import DiceLoss
 from monai.inferers import sliding_window_inference
 from monai.data import Dataset
 from torch.utils.data import DataLoader
 
+from model import build_model
 from build_datalist import build_test_list
 from transforms import get_val_transforms
 
@@ -15,27 +15,34 @@ from transforms import get_val_transforms
 def get_test_loader(root):
     test_data = build_test_list(root)
     test_ds = Dataset(test_data, transform=get_val_transforms())
-
     return DataLoader(
-        test_ds, batch_size=1, shuffle=False, num_workers=4
+        test_ds, batch_size=1, shuffle=False, num_workers=0
     )
 
-ROOT = "MSLesSeg Dataset"
+
+# ------------------
+# Args
+# ------------------
+parser = argparse.ArgumentParser()
+parser.add_argument("--variant", type=str, default="baseline",
+                    choices=["baseline", "wavelet_a"],
+                    help="Model variant to evaluate")
+args = parser.parse_args()
+
+VARIANT = args.variant
+
+ROOT = "MSLesSeg_Dataset"
 DEVICE = "cuda"
 ROI_SIZE = (96, 96, 96)
 SW_BATCH_SIZE = 2
-MODEL_PATH = "best_swinunetr.pth"
+MODEL_PATH = f"best_{VARIANT}.pth"
 
+print(f"Variant: {VARIANT}")
+print(f"Loading weights from: {MODEL_PATH}")
 
 test_loader = get_test_loader(ROOT)
 
-model = SwinUNETR(
-    spatial_dims=3,
-    in_channels=1,
-    out_channels=1,
-    feature_size=48,
-).to(DEVICE)
-
+model = build_model(VARIANT).to(DEVICE)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval()
 
@@ -64,5 +71,5 @@ with torch.no_grad():
 test_loss /= steps
 test_dice = dice_metric.aggregate().item()
 
-print(f"FINAL TEST Dice: {test_dice:.4f}")
-print(f"FINAL TEST Loss: {test_loss:.4f}")
+print(f"[{VARIANT}] FINAL TEST Dice: {test_dice:.4f}")
+print(f"[{VARIANT}] FINAL TEST Loss: {test_loss:.4f}")
