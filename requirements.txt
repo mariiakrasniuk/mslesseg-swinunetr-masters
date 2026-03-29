@@ -6,5 +6,5 @@ nibabel==5.3.3
 numpy==2.2.6
 tqdm==4.67.1
 scikit-learn==1.7.2
-matplotib==3.10.8
+matplotlib==3.10.8
 einops==0.8.1

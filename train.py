@@ -17,11 +17,27 @@ from splits import TRAIN_PATIENTS, VAL_PATIENTS
 # ------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
-                    choices=["baseline", "wavelet_a"],
+                    choices=["baseline", "wavelet_a", "wavelet_a_plus", "wavelet_b",
+                             "wavelet_a_higher_level", "wavelet_ml"],
                     help="Model variant to train")
+parser.add_argument("--wavelet", type=str, default="haar",
+                    choices=["haar", "db2", "sym4"],
+                    help="Wavelet family — only used with --variant wavelet_ml")
+parser.add_argument("--levels", type=int, default=1,
+                    choices=[1, 2, 3],
+                    help="Decomposition levels — only used with --variant wavelet_ml")
 args = parser.parse_args()
 
 VARIANT = args.variant
+WAVELET = args.wavelet
+LEVELS  = args.levels
+
+# Run name encodes variant + wavelet family + level for wavelet_ml experiments.
+# Legacy variants keep a flat name so existing checkpoints are not affected.
+if VARIANT == "wavelet_ml":
+    RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
+else:
+    RUN_NAME = VARIANT
 
 # ------------------
 # Config
@@ -38,13 +54,16 @@ SW_BATCH_SIZE = 2
 PATIENCE = 10
 MIN_DELTA = 1e-4
 
-# Variant-aware output paths
-BEST_MODEL_PATH    = f"best_{VARIANT}.pth"
-HISTORY_PATH       = f"training_history_{VARIANT}.pth"
-LOSS_CURVE_PATH    = f"loss_curves_{VARIANT}.png"
-DICE_CURVE_PATH    = f"dice_curves_{VARIANT}.png"
+# Run-aware output paths
+BEST_MODEL_PATH    = f"best_{RUN_NAME}.pth"
+HISTORY_PATH       = f"training_history_{RUN_NAME}.pth"
+LOSS_CURVE_PATH    = f"loss_curves_{RUN_NAME}.png"
+DICE_CURVE_PATH    = f"dice_curves_{RUN_NAME}.png"
 
-print(f"Variant: {VARIANT}")
+print(f"Variant : {VARIANT}")
+if VARIANT == "wavelet_ml":
+    print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}")
+print(f"Run name: {RUN_NAME}")
 print(f"Best model will be saved to: {BEST_MODEL_PATH}")
 
 # ------------------
@@ -57,7 +76,8 @@ train_loader, val_loader = get_loaders(
 # ------------------
 # Model
 # ------------------
-model = build_model(VARIANT, use_checkpoint=True).to(DEVICE)
+model = build_model(VARIANT, use_checkpoint=True,
+                    wavelet=WAVELET, levels=LEVELS).to(DEVICE)
 
 # ------------------
 # Loss / Optim / Metrics
@@ -94,7 +114,21 @@ for epoch in range(1, EPOCHS + 1):
     train_loss = 0.0
     steps = 0
 
-    for batch in tqdm(train_loader, desc=f"Epoch {epoch} [train]"):
+    train_iter = iter(train_loader)
+    for _ in tqdm(range(len(train_loader)), desc=f"Epoch {epoch} [train]"):
+        try:
+            batch = next(train_iter)
+        except RuntimeError as e:
+            # MONAI wraps the original CUDA error, so walk the full chain
+            exc, chain = e, ""
+            while exc is not None:
+                chain += str(exc)
+                exc = getattr(exc, "__cause__", None)
+            if "INTERNAL ASSERT" in chain:
+                print(f"\n[warn] skipping bad batch: {e}")
+                continue
+            raise
+
         # batch is list of dicts (multi-patch from RandCropByPosNegLabeld)
         for sample in batch:
             x = sample["image"].to(DEVICE)
@@ -195,7 +229,7 @@ plt.plot(train_loss_history, label="Train Loss")
 plt.plot(val_loss_history, label="Val Loss")
 plt.xlabel("Epoch")
 plt.ylabel("Dice Loss")
-plt.title(f"Training / Validation Loss [{VARIANT}]")
+plt.title(f"Training / Validation Loss [{RUN_NAME}]")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
@@ -210,7 +244,7 @@ plt.plot(train_dice_history, label="Train Dice")
 plt.plot(val_dice_history, label="Val Dice")
 plt.xlabel("Epoch")
 plt.ylabel("Dice Score")
-plt.title(f"Training / Validation Dice [{VARIANT}]")
+plt.title(f"Training / Validation Dice [{RUN_NAME}]")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()

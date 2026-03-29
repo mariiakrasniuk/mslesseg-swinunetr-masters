@@ -25,24 +25,42 @@ def get_test_loader(root):
 # ------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
-                    choices=["baseline", "wavelet_a"],
+                    choices=["baseline", "wavelet_a", "wavelet_a_plus", "wavelet_b",
+                             "wavelet_a_higher_level", "wavelet_ml"],
                     help="Model variant to evaluate")
+parser.add_argument("--wavelet", type=str, default="haar",
+                    choices=["haar", "db2", "sym4"],
+                    help="Wavelet family — only used with --variant wavelet_ml")
+parser.add_argument("--levels", type=int, default=1,
+                    choices=[1, 2, 3],
+                    help="Decomposition levels — only used with --variant wavelet_ml")
 args = parser.parse_args()
 
 VARIANT = args.variant
+WAVELET = args.wavelet
+LEVELS  = args.levels
+
+# Must match the naming logic in train.py
+if VARIANT == "wavelet_ml":
+    RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
+else:
+    RUN_NAME = VARIANT
 
 ROOT = "MSLesSeg_Dataset"
 DEVICE = "cuda"
 ROI_SIZE = (96, 96, 96)
 SW_BATCH_SIZE = 2
-MODEL_PATH = f"best_{VARIANT}.pth"
+MODEL_PATH = f"best_{RUN_NAME}.pth"
 
-print(f"Variant: {VARIANT}")
+print(f"Variant : {VARIANT}")
+if VARIANT == "wavelet_ml":
+    print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}")
+print(f"Run name: {RUN_NAME}")
 print(f"Loading weights from: {MODEL_PATH}")
 
 test_loader = get_test_loader(ROOT)
 
-model = build_model(VARIANT).to(DEVICE)
+model = build_model(VARIANT, wavelet=WAVELET, levels=LEVELS).to(DEVICE)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval()
 
@@ -71,5 +89,5 @@ with torch.no_grad():
 test_loss /= steps
 test_dice = dice_metric.aggregate().item()
 
-print(f"[{VARIANT}] FINAL TEST Dice: {test_dice:.4f}")
-print(f"[{VARIANT}] FINAL TEST Loss: {test_loss:.4f}")
+print(f"[{RUN_NAME}] FINAL TEST Dice: {test_dice:.4f}")
+print(f"[{RUN_NAME}] FINAL TEST Loss: {test_loss:.4f}")
