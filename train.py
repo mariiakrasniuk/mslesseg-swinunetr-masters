@@ -18,7 +18,7 @@ from splits import TRAIN_PATIENTS, VAL_PATIENTS
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
                     choices=["baseline", "wavelet_a", "wavelet_a_plus", "wavelet_b",
-                             "wavelet_a_higher_level", "wavelet_ml"],
+                             "wavelet_a_higher_level", "wavelet_ml", "wavelet_swt"],
                     help="Model variant to train")
 parser.add_argument("--wavelet", type=str, default="haar",
                     choices=["haar", "db2", "sym4"],
@@ -36,6 +36,8 @@ LEVELS  = args.levels
 # Legacy variants keep a flat name so existing checkpoints are not affected.
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
+elif VARIANT == "wavelet_swt":
+    RUN_NAME = f"wavelet_swt_{WAVELET}"
 else:
     RUN_NAME = VARIANT
 
@@ -160,7 +162,20 @@ for epoch in range(1, EPOCHS + 1):
     val_steps = 0
 
     with torch.no_grad():
-        for batch in tqdm(val_loader, desc=f"Epoch {epoch} [val]"):
+        val_iter = iter(val_loader)
+        for _ in tqdm(range(len(val_loader)), desc=f"Epoch {epoch} [val]"):
+            try:
+                batch = next(val_iter)
+            except RuntimeError as e:
+                exc, chain = e, ""
+                while exc is not None:
+                    chain += str(exc)
+                    exc = getattr(exc, "__cause__", None)
+                if "INTERNAL ASSERT" in chain:
+                    print(f"\n[warn] skipping bad val batch: {e}")
+                    continue
+                raise
+
             x = batch["image"].to(DEVICE)
             y = batch["label"].to(DEVICE)
 
@@ -175,8 +190,8 @@ for epoch in range(1, EPOCHS + 1):
             preds = torch.sigmoid(preds)
             dice_metric(preds, y)
 
-    val_loss /= val_steps
-    val_dice = dice_metric.aggregate().item()
+    val_loss = val_loss / val_steps if val_steps > 0 else float("nan")
+    val_dice = dice_metric.aggregate().item() if val_steps > 0 else 0.0
 
     val_loss_history.append(val_loss)
     val_dice_history.append(val_dice)

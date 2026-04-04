@@ -5,6 +5,7 @@ from wavelet import (
     WaveletPatchEmbed,
     WaveletPatchEmbedSE,
     WaveletPatchEmbedML,
+    WaveletPatchEmbedSWT,
     WaveletSkipDecoder,
     _max_dwt_levels,  # used by wavelet_a_higher_level
 )
@@ -82,6 +83,21 @@ def build_model(
             levels=1 :  64  (SE)  + 432 (proj) =  496
             levels=2 : 128  (SE)  + 816 (proj) =  944
             levels=3 : 192  (SE)  + 1200 (proj) = 1392
+
+    wavelet_swt  [detail-preserving variant]
+        Patch embedding replaced by WaveletPatchEmbedSWT, which uses a
+        Stationary (Undecimated) DWT (stride=1) to compute all 8 sub-bands at
+        full input resolution before any spatial downsampling. This ensures
+        small lesion edges are never lost during wavelet decomposition — the
+        spatial reduction happens in a learned stride-2 Conv3d projection.
+
+        The --wavelet flag selects the filter family (haar / db2 / sym4).
+        --levels is ignored (single-level SWT only).
+
+        Parameter count (embed_dim=48):
+            SE:   64
+            proj: 3120
+            total: 3184
     """
     if variant == "baseline":
         return _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint)
@@ -128,9 +144,16 @@ def build_model(
         )
         return model
 
+    elif variant == "wavelet_swt":
+        model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint)
+        model.swinViT.patch_embed = WaveletPatchEmbedSWT(
+            in_chans=in_channels, embed_dim=feature_size, wavelet=wavelet,
+        )
+        return model
+
     else:
         raise ValueError(
             f"Unknown variant '{variant}'. Choose from: "
             f"baseline, wavelet_a, wavelet_a_plus, wavelet_b, "
-            f"wavelet_a_higher_level, wavelet_ml"
+            f"wavelet_a_higher_level, wavelet_ml, wavelet_swt"
         )

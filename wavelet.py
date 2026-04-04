@@ -315,6 +315,95 @@ class WaveletPatchEmbedSE(nn.Module):
         return self.proj(x)
 
 
+class SWT3d(nn.Module):
+    """
+    Stationary (Undecimated) 3-D Discrete Wavelet Transform.
+
+    Identical to DWT3d but uses stride=1, so the output retains full spatial
+    resolution — no detail is discarded before encoding:
+
+        Input:  [B, 1, D, H, W]
+        Output: [B, 8, D,   H,   W  ]   ← same spatial size as input
+
+    Boundary handling: causal zero-padding (k-1 samples on the front of each
+    axis), giving output size exactly equal to input size for any k.
+
+    Parameters
+    ----------
+    wavelet : str
+        One of 'haar', 'db2', 'sym4'.
+    """
+
+    def __init__(self, wavelet: str = "haar"):
+        super().__init__()
+        if wavelet not in _WAVELET_FILTERS:
+            raise ValueError(
+                f"Unknown wavelet '{wavelet}'. "
+                f"Available: {list(_WAVELET_FILTERS)}"
+            )
+        lo_1d, hi_1d = _WAVELET_FILTERS[wavelet]
+        L = torch.tensor(lo_1d, dtype=torch.float32)
+        H = torch.tensor(hi_1d, dtype=torch.float32)
+
+        filters = []
+        for fd in (L, H):
+            for fh in (L, H):
+                for fw in (L, H):
+                    f3d = (fd[:, None, None]
+                           * fh[None, :, None]
+                           * fw[None, None, :])
+                    filters.append(f3d)
+
+        k = len(lo_1d)
+        weight = torch.stack(filters, dim=0).unsqueeze(1)  # [8, 1, k, k, k]
+        self.register_buffer("weight", weight)
+        self.pad_size: int = k - 1  # causal padding to keep output = input size
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        p = self.pad_size
+        # F.pad order: (W_left, W_right, H_left, H_right, D_left, D_right)
+        x = F.pad(x, (p, 0, p, 0, p, 0))
+        return F.conv3d(x, self.weight, stride=1, padding=0)
+
+
+class WaveletPatchEmbedSWT(nn.Module):
+    """
+    Stationary wavelet patch embedding — detail-preserving variant.
+
+    Unlike DWT-based embeddings (stride=2), the SWT computes all 8 sub-bands
+    at full input resolution before any spatial reduction. This ensures that
+    small lesion edges and high-frequency details are never discarded during
+    wavelet decomposition — only during the subsequent learned stride-2
+    projection, which can choose what to preserve.
+
+    Pipeline:
+        [B, 1, D, H, W]
+        → SWT3d     → [B, 8, D,   H,   W  ]   (full resolution, 8 sub-bands)
+        → SubBandSE → sub-band recalibration
+        → Conv3d(8→embed_dim, k=2, s=2) → [B, embed_dim, D/2, H/2, W/2]
+
+    The --wavelet flag selects the filter family (haar / db2 / sym4).
+
+    Parameters (embed_dim=48):
+        SE:   64
+        proj: 8 × 48 × 2³ + 48 = 3120
+        total: 3184
+    """
+
+    def __init__(self, in_chans: int = 1, embed_dim: int = 48,
+                 wavelet: str = "haar"):
+        super().__init__()
+        self.swt = SWT3d(wavelet)
+        self.se = SubBandSE(channels=8, reduction=2)
+        # Stride-2 learned projection — spatial reduction happens here, not in DWT
+        self.proj = nn.Conv3d(8, embed_dim, kernel_size=2, stride=2, bias=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.swt(x)   # [B, 8, D, H, W] — full resolution, no detail lost
+        x = self.se(x)    # recalibrate sub-band importance
+        return self.proj(x)  # [B, embed_dim, D/2, H/2, W/2]
+
+
 class WaveletPatchEmbedML(nn.Module):
     """
     Variant A-HL — multi-level wavelet patch embedding with full LLL decomposition.
