@@ -357,63 +357,76 @@ class SWT3d(nn.Module):
         k = len(lo_1d)
         weight = torch.stack(filters, dim=0).unsqueeze(1)  # [8, 1, k, k, k]
         self.register_buffer("weight", weight)
-        self.pad_size: int = k - 1  # causal padding to keep output = input size
+        self.base_pad: int = k - 1  # multiplied by dilation at each level
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        p = self.pad_size
+    def forward(self, x: torch.Tensor, dilation: int = 1) -> torch.Tensor:
+        # Causal padding: (k-1)*dilation ensures output size = input size
+        # for any dilation (à trous algorithm).
         # F.pad order: (W_left, W_right, H_left, H_right, D_left, D_right)
+        p = self.base_pad * dilation
         x = F.pad(x, (p, 0, p, 0, p, 0))
-        return F.conv3d(x, self.weight, stride=1, padding=0)
+        return F.conv3d(x, self.weight, stride=1, padding=0, dilation=dilation)
 
 
 class WaveletPatchEmbedSWT(nn.Module):
     """
-    Stationary wavelet patch embedding — detail-preserving variant.
+    Multi-level Stationary Wavelet patch embedding (à trous algorithm).
 
-    Unlike DWT-based embeddings (stride=2), the SWT computes all 8 sub-bands
-    at full input resolution before any spatial reduction. This ensures that
-    small lesion edges and high-frequency details are never discarded during
-    wavelet decomposition — only during the subsequent learned stride-2
-    projection, which can choose what to preserve.
+    Applies SWT at `levels` scales using increasing filter dilation (2^(l-1)),
+    so every level operates at full spatial resolution — no detail is ever lost
+    to downsampling at any scale.
 
-    Detail subbands (channels 1-7) have near-zero mean: they encode signed
-    differences, so global average pooling in SubBandSE would cancel them out.
-    We take the absolute value of detail subbands before SE and projection so
-    that their energy (magnitude of edges) is preserved rather than cancelled.
-    The LLL approximation (channel 0) is kept signed.
+    Dilation schedule:
+        level 1 : dilation=1  — fine detail   (local edges)
+        level 2 : dilation=2  — medium detail  (2× wider context)
+        level 3 : dilation=4  — coarse detail  (4× wider context)
 
-    Pipeline:
+    All subbands stay at [D, H, W] throughout.  Each level has its own
+    SubBandSE block.  Detail subbands (channels 1-7) are rectified (abs)
+    before SE so that edge *energy* — not cancelling signed values — drives
+    the channel recalibration and the stride-2 projection.
+
+    Pipeline (levels=3 example):
         [B, 1, D, H, W]
-        → SWT3d                   → [B, 8, D, H, W]  (full resolution)
-        → |detail|, keep LLL      → detail energy preserved
-        → SubBandSE               → sub-band recalibration
-        → Conv3d(8→embed_dim, k=2, s=2) → [B, embed_dim, D/2, H/2, W/2]
+        → SWT(dilation=1) → abs(detail) → SE₁ → [B, 8,   D, H, W]
+        → SWT(dilation=2) → abs(detail) → SE₂ → [B, 8,   D, H, W]
+        → SWT(dilation=4) → abs(detail) → SE₃ → [B, 8,   D, H, W]
+        → cat                                  → [B, 8*3, D, H, W]
+        → Conv3d(24→embed_dim, k=2, s=2)       → [B, embed_dim, D/2, H/2, W/2]
 
-    The --wavelet flag selects the filter family (haar / db2 / sym4).
-
-    Parameters (embed_dim=48):
-        SE:   64
-        proj: 8 × 48 × 2³ + 48 = 3120
-        total: 3184
+    Parameter count (embed_dim=48):
+        SE:   levels × 64
+        proj: 8×levels × 48 × 2³ + 48
+        levels=1 :  64  + 3120 = 3184
+        levels=2 : 128  + 6192 = 6320
+        levels=3 : 192  + 9264 = 9456
     """
 
     def __init__(self, in_chans: int = 1, embed_dim: int = 48,
-                 wavelet: str = "haar"):
+                 wavelet: str = "haar", levels: int = 1):
         super().__init__()
+        self.levels = levels
         self.swt = SWT3d(wavelet)
-        self.se = SubBandSE(channels=8, reduction=2)
-        # Stride-2 learned projection — spatial reduction happens here, not in DWT
-        self.proj = nn.Conv3d(8, embed_dim, kernel_size=2, stride=2, bias=True)
+        self.se_blocks = nn.ModuleList(
+            [SubBandSE(channels=8, reduction=2) for _ in range(levels)]
+        )
+        # Stride-2 projection from 8*levels full-res channels → embed_dim tokens
+        self.proj = nn.Conv3d(8 * levels, embed_dim, kernel_size=2, stride=2, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.swt(x)   # [B, 8, D, H, W] — full resolution, no detail lost
-        # Detail subbands (1-7) are signed and near-zero mean — take abs to
-        # expose edge energy to SE pooling and the stride-2 projection
-        approx = x[:, :1]            # LLL — keep signed
-        detail = x[:, 1:].abs()      # 7 detail bands — magnitude only
-        x = torch.cat([approx, detail], dim=1)
-        x = self.se(x)    # recalibrate sub-band importance
-        return self.proj(x)  # [B, embed_dim, D/2, H/2, W/2]
+        all_bands = []
+        for i in range(self.levels):
+            dilation = 2 ** i          # 1, 2, 4 for levels 1, 2, 3
+            sub = self.swt(x, dilation=dilation)   # [B, 8, D, H, W]
+            # Keep LLL signed; rectify detail subbands to expose edge energy
+            approx = sub[:, :1]
+            detail = sub[:, 1:].abs()
+            sub = torch.cat([approx, detail], dim=1)
+            sub = self.se_blocks[i](sub)
+            all_bands.append(sub)
+
+        x = torch.cat(all_bands, dim=1)   # [B, 8*levels, D, H, W]
+        return self.proj(x)               # [B, embed_dim, D/2, H/2, W/2]
 
 
 class WaveletPatchEmbedML(nn.Module):

@@ -35,5 +35,5 @@ tag = args.variant
 if args.variant == "wavelet_ml":
     tag = f"wavelet_ml  wavelet={args.wavelet}  levels={args.levels}"
 elif args.variant == "wavelet_swt":
-    tag = f"wavelet_swt  wavelet={args.wavelet}"
+    tag = f"wavelet_swt  wavelet={args.wavelet}  levels={args.levels}"
 print(f"[{tag}] input: {x.shape}  output: {y.shape}")

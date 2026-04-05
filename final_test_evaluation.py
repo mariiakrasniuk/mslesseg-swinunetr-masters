@@ -44,7 +44,7 @@ LEVELS  = args.levels
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
 elif VARIANT == "wavelet_swt":
-    RUN_NAME = f"wavelet_swt_{WAVELET}"
+    RUN_NAME = f"wavelet_swt_{WAVELET}_l{LEVELS}"
 else:
     RUN_NAME = VARIANT
 

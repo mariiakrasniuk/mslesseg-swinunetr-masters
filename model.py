@@ -147,7 +147,8 @@ def build_model(
     elif variant == "wavelet_swt":
         model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint)
         model.swinViT.patch_embed = WaveletPatchEmbedSWT(
-            in_chans=in_channels, embed_dim=feature_size, wavelet=wavelet,
+            in_chans=in_channels, embed_dim=feature_size,
+            wavelet=wavelet, levels=levels,
         )
         return model
 

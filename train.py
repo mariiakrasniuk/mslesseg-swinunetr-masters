@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from torch.optim import AdamW
 from tqdm import tqdm
 
-from monai.losses import DiceFocalLoss
+from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.inferers import sliding_window_inference
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -38,7 +38,7 @@ LEVELS  = args.levels
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
 elif VARIANT == "wavelet_swt":
-    RUN_NAME = f"wavelet_swt_{WAVELET}"
+    RUN_NAME = f"wavelet_swt_{WAVELET}_l{LEVELS}"
 else:
     RUN_NAME = VARIANT
 
@@ -85,7 +85,7 @@ model = build_model(VARIANT, use_checkpoint=True,
 # ------------------
 # Loss / Optim / Metrics
 # ------------------
-loss_fn = DiceFocalLoss(sigmoid=True, gamma=2.0, lambda_dice=1.0, lambda_focal=1.0)
+loss_fn = DiceCELoss(sigmoid=True, lambda_dice=1.0, lambda_ce=0.5)
 optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
 scheduler = CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-6)
 
