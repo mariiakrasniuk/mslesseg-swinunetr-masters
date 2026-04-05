@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 from torch.optim import AdamW
 from tqdm import tqdm
 
-from monai.losses import DiceLoss
+from monai.losses import DiceFocalLoss
 from monai.metrics import DiceMetric
 from monai.inferers import sliding_window_inference
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from model import build_model
 from dataloaders import get_loaders
@@ -84,8 +85,9 @@ model = build_model(VARIANT, use_checkpoint=True,
 # ------------------
 # Loss / Optim / Metrics
 # ------------------
-loss_fn = DiceLoss(sigmoid=True)
+loss_fn = DiceFocalLoss(sigmoid=True, gamma=2.0, lambda_dice=1.0, lambda_focal=1.0)
 optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+scheduler = CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-6)
 
 dice_metric = DiceMetric(include_background=False, reduction="mean")
 
@@ -148,6 +150,7 @@ for epoch in range(1, EPOCHS + 1):
             preds = torch.sigmoid(logits)
             dice_metric(preds, y)
 
+    scheduler.step()
     train_loss /= steps
     train_dice = dice_metric.aggregate().item()
 

@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(ls /c/Users/Asus/mslesseg-swinunetr/*.pth)",
+      "Bash(ls /c/Users/Asus/mslesseg-swinunetr/*.png)"
     ]
   }
 }

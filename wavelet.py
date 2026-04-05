@@ -376,10 +376,17 @@ class WaveletPatchEmbedSWT(nn.Module):
     wavelet decomposition — only during the subsequent learned stride-2
     projection, which can choose what to preserve.
 
+    Detail subbands (channels 1-7) have near-zero mean: they encode signed
+    differences, so global average pooling in SubBandSE would cancel them out.
+    We take the absolute value of detail subbands before SE and projection so
+    that their energy (magnitude of edges) is preserved rather than cancelled.
+    The LLL approximation (channel 0) is kept signed.
+
     Pipeline:
         [B, 1, D, H, W]
-        → SWT3d     → [B, 8, D,   H,   W  ]   (full resolution, 8 sub-bands)
-        → SubBandSE → sub-band recalibration
+        → SWT3d                   → [B, 8, D, H, W]  (full resolution)
+        → |detail|, keep LLL      → detail energy preserved
+        → SubBandSE               → sub-band recalibration
         → Conv3d(8→embed_dim, k=2, s=2) → [B, embed_dim, D/2, H/2, W/2]
 
     The --wavelet flag selects the filter family (haar / db2 / sym4).
@@ -400,6 +407,11 @@ class WaveletPatchEmbedSWT(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.swt(x)   # [B, 8, D, H, W] — full resolution, no detail lost
+        # Detail subbands (1-7) are signed and near-zero mean — take abs to
+        # expose edge energy to SE pooling and the stride-2 projection
+        approx = x[:, :1]            # LLL — keep signed
+        detail = x[:, 1:].abs()      # 7 detail bands — magnitude only
+        x = torch.cat([approx, detail], dim=1)
         x = self.se(x)    # recalibrate sub-band importance
         return self.proj(x)  # [B, embed_dim, D/2, H/2, W/2]
 

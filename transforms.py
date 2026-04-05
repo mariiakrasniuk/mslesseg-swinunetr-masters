@@ -1,7 +1,8 @@
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, Orientationd,
     Spacingd, NormalizeIntensityd, RandCropByPosNegLabeld,
-    RandFlipd, EnsureTyped
+    RandFlipd, RandScaleIntensityd, RandShiftIntensityd,
+    RandGaussianNoised, EnsureTyped
 )
 
 def get_train_transforms():
@@ -19,6 +20,11 @@ def get_train_transforms():
             pos=1, neg=1, num_samples=4
         ),
         RandFlipd(keys=["image", "label"], spatial_axis=0, prob=0.5),
+        RandFlipd(keys=["image", "label"], spatial_axis=1, prob=0.5),
+        RandFlipd(keys=["image", "label"], spatial_axis=2, prob=0.5),
+        RandScaleIntensityd(keys="image", factors=0.1, prob=0.5),
+        RandShiftIntensityd(keys="image", offsets=0.1, prob=0.5),
+        RandGaussianNoised(keys="image", std=0.01, prob=0.2),
         EnsureTyped(keys=["image", "label"]),
     ])
 
