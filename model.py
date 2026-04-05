@@ -5,6 +5,7 @@ from wavelet import (
     WaveletPatchEmbed,
     WaveletPatchEmbedSE,
     WaveletPatchEmbedML,
+    WaveletPatchEmbedSWT,
     WaveletSkipDecoder,
     _max_dwt_levels,  # used by wavelet_a_higher_level
 )
@@ -128,9 +129,17 @@ def build_model(
         )
         return model
 
+    elif variant == "wavelet_swt":
+        model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint)
+        model.swinViT.patch_embed = WaveletPatchEmbedSWT(
+            in_chans=in_channels, embed_dim=feature_size,
+            wavelet=wavelet, levels=levels,
+        )
+        return model
+
     else:
         raise ValueError(
             f"Unknown variant '{variant}'. Choose from: "
             f"baseline, wavelet_a, wavelet_a_plus, wavelet_b, "
-            f"wavelet_a_higher_level, wavelet_ml"
+            f"wavelet_a_higher_level, wavelet_ml, wavelet_swt"
         )
