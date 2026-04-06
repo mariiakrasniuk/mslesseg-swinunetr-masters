@@ -44,7 +44,7 @@ else:
 ROOT = "MSLesSeg_Dataset"
 DEVICE = "cuda"
 EPOCHS = 70
-LR = 1e-4
+LR = 5e-5
 WEIGHT_DECAY = 1e-5
 ROI_SIZE = (96, 96, 96)
 SW_BATCH_SIZE = 2
