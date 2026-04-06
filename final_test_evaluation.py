@@ -25,8 +25,7 @@ def get_test_loader(root):
 # ------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
-                    choices=["baseline", "wavelet_a", "wavelet_a_plus", "wavelet_b",
-                             "wavelet_a_higher_level", "wavelet_ml"],
+                    choices=["baseline", "wavelet_a", "wavelet_b", "wavelet_ml"],
                     help="Model variant to evaluate")
 parser.add_argument("--wavelet", type=str, default="haar",
                     choices=["haar", "db2", "sym4"],

@@ -287,34 +287,6 @@ class WaveletSkipDecoder(nn.Module):
         return self.decoder(inp, self.refine(skip))
 
 
-class WaveletPatchEmbedSE(nn.Module):
-    """
-    Variant A+ — single-level wavelet patch embedding with sub-band attention.
-
-    Extends WaveletPatchEmbed by adding a SubBandSE block between the DWT
-    and the projection, allowing the network to learn which of the 8
-    frequency sub-bands are most informative before mixing them into tokens.
-
-    Pipeline:
-        [B, 1, D, H, W]
-        → HaarDWT3d  → [B, 8, D/2, H/2, W/2]
-        → SubBandSE  → per-sub-band recalibration
-        → Conv3d(8→embed_dim, k=1)  → [B, embed_dim, D/2, H/2, W/2]
-
-    Parameters: 64 (SE) + 432 (proj) = 496
-    """
-
-    def __init__(self, in_chans: int = 1, embed_dim: int = 48):
-        super().__init__()
-        self.dwt = HaarDWT3d()
-        self.se = SubBandSE(channels=8, reduction=2)
-        self.proj = nn.Conv3d(8, embed_dim, kernel_size=1, bias=True)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.dwt(x)   # [B, 8, D/2, H/2, W/2]
-        x = self.se(x)    # recalibrate sub-band importance
-        return self.proj(x)
-
 
 class WaveletPatchEmbedML(nn.Module):
     """

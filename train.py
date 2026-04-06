@@ -7,7 +7,6 @@ from tqdm import tqdm
 from monai.losses import DiceLoss
 from monai.metrics import DiceMetric
 from monai.inferers import sliding_window_inference
-from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from model import build_model
 from dataloaders import get_loaders
@@ -18,8 +17,7 @@ from splits import TRAIN_PATIENTS, VAL_PATIENTS
 # ------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
-                    choices=["baseline", "wavelet_a", "wavelet_a_plus", "wavelet_b",
-                             "wavelet_a_higher_level", "wavelet_ml"],
+                    choices=["baseline", "wavelet_a", "wavelet_b", "wavelet_ml"],
                     help="Model variant to train")
 parser.add_argument("--wavelet", type=str, default="haar",
                     choices=["haar", "db2", "sym4"],
@@ -85,7 +83,6 @@ model = build_model(VARIANT, use_checkpoint=True,
 # ------------------
 loss_fn = DiceLoss(sigmoid=True)
 optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-scheduler = CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-6)
 
 dice_metric = DiceMetric(include_background=False, reduction="mean")
 
@@ -148,7 +145,6 @@ for epoch in range(1, EPOCHS + 1):
             preds = torch.sigmoid(logits)
             dice_metric(preds, y)
 
-    scheduler.step()
     train_loss /= steps
     train_dice = dice_metric.aggregate().item()
 

@@ -22,7 +22,13 @@ from model import build_model
 # ======================
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
-                    choices=["baseline", "wavelet_a", "wavelet_a_plus", "wavelet_b", "wavelet_a_higher_level"])
+                    choices=["baseline", "wavelet_a", "wavelet_b", "wavelet_ml"])
+parser.add_argument("--wavelet", type=str, default="haar",
+                    choices=["haar", "db2", "sym4"],
+                    help="Wavelet family — only used with --variant wavelet_ml")
+parser.add_argument("--levels", type=int, default=1,
+                    choices=[1, 2, 3],
+                    help="Decomposition levels — only used with --variant wavelet_ml")
 parser.add_argument("--patient", type=str, default="P1",
                     help="Patient ID, e.g. P1")
 parser.add_argument("--timepoint", type=str, default="T1",
@@ -30,6 +36,8 @@ parser.add_argument("--timepoint", type=str, default="T1",
 args = parser.parse_args()
 
 VARIANT = args.variant
+WAVELET = args.wavelet
+LEVELS  = args.levels
 ROOT = "MSLesSeg_Dataset"
 
 # ======================
@@ -37,7 +45,12 @@ ROOT = "MSLesSeg_Dataset"
 # ======================
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-MODEL_PATH = f"best_{VARIANT}.pth"
+if VARIANT == "wavelet_ml":
+    RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
+else:
+    RUN_NAME = VARIANT
+
+MODEL_PATH = f"best_{RUN_NAME}.pth"
 
 P = args.patient
 T = args.timepoint
@@ -64,6 +77,8 @@ val_transform = Compose([
 ])
 
 print(f"Variant : {VARIANT}")
+if VARIANT == "wavelet_ml":
+    print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}")
 print(f"Patient : {P}, Timepoint: {T}")
 print(f"Image   : {IMAGE_PATH}")
 
@@ -76,7 +91,7 @@ image_tensor = data["image"].unsqueeze(0).to(DEVICE)  # [1,1,D,H,W]
 # ======================
 # Load model
 # ======================
-model = build_model(VARIANT)
+model = build_model(VARIANT, wavelet=WAVELET, levels=LEVELS)
 
 model.load_state_dict(
     torch.load(MODEL_PATH, map_location=DEVICE, weights_only=True)
@@ -158,7 +173,7 @@ plt.legend(
     bbox_to_anchor=(0.5, -0.05),
 )
 
-out_path = f"visualize_predictions_{VARIANT}_{P}_{T}.png"
+out_path = f"visualize_predictions_{RUN_NAME}_{P}_{T}.png"
 plt.savefig(out_path, dpi=300)
 print(f"Saved: {out_path}")
 plt.show()
