@@ -26,7 +26,7 @@ def get_test_loader(root):
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
                     choices=["baseline", "wavelet_a", "wavelet_a_plus", "wavelet_b",
-                             "wavelet_a_higher_level", "wavelet_ml", "wavelet_swt"],
+                             "wavelet_a_higher_level", "wavelet_ml"],
                     help="Model variant to evaluate")
 parser.add_argument("--wavelet", type=str, default="haar",
                     choices=["haar", "db2", "sym4"],
@@ -43,8 +43,6 @@ LEVELS  = args.levels
 # Must match the naming logic in train.py
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
-elif VARIANT == "wavelet_swt":
-    RUN_NAME = f"wavelet_swt_{WAVELET}_l{LEVELS}"
 else:
     RUN_NAME = VARIANT
 

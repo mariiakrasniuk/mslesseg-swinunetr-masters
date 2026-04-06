@@ -19,7 +19,7 @@ from splits import TRAIN_PATIENTS, VAL_PATIENTS
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
                     choices=["baseline", "wavelet_a", "wavelet_a_plus", "wavelet_b",
-                             "wavelet_a_higher_level", "wavelet_ml", "wavelet_swt"],
+                             "wavelet_a_higher_level", "wavelet_ml"],
                     help="Model variant to train")
 parser.add_argument("--wavelet", type=str, default="haar",
                     choices=["haar", "db2", "sym4"],
@@ -37,8 +37,6 @@ LEVELS  = args.levels
 # Legacy variants keep a flat name so existing checkpoints are not affected.
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
-elif VARIANT == "wavelet_swt":
-    RUN_NAME = f"wavelet_swt_{WAVELET}_l{LEVELS}"
 else:
     RUN_NAME = VARIANT
 
@@ -64,7 +62,7 @@ LOSS_CURVE_PATH    = f"loss_curves_{RUN_NAME}.png"
 DICE_CURVE_PATH    = f"dice_curves_{RUN_NAME}.png"
 
 print(f"Variant : {VARIANT}")
-if VARIANT in ("wavelet_ml", "wavelet_swt"):
+if VARIANT == "wavelet_ml":
     print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}")
 print(f"Run name: {RUN_NAME}")
 print(f"Best model will be saved to: {BEST_MODEL_PATH}")
