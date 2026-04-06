@@ -4,7 +4,6 @@ from monai.networks.nets import SwinUNETR
 from wavelet import (
     WaveletPatchEmbed,
     WaveletPatchEmbedML,
-    WaveletSkipDecoder,
     _max_dwt_levels,  # used by WaveletPatchEmbedML forward
 )
 
@@ -42,11 +41,6 @@ def build_model(
         Patch embedding replaced by a single-level 3D Haar DWT followed by
         a 1x1x1 learned projection. Parameter count identical to baseline (432).
 
-    wavelet_b
-        wavelet_a patch embedding + frequency-aware skip refinement on
-        decoder2 (48³) and decoder3 (24³) via WaveletSkipRefinement.
-        Extra parameters over baseline: 128.
-
     wavelet_ml  [ablation variant]
         Patch embedding replaced by WaveletPatchEmbedML parameterised by the
         `wavelet` and `levels` arguments. Used for the family × depth ablation.
@@ -69,15 +63,6 @@ def build_model(
         )
         return model
 
-    elif variant == "wavelet_b":
-        model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint)
-        model.swinViT.patch_embed = WaveletPatchEmbed(
-            in_chans=in_channels, embed_dim=feature_size
-        )
-        for name in ("decoder3", "decoder2"):
-            setattr(model, name, WaveletSkipDecoder(getattr(model, name)))
-        return model
-
     elif variant == "wavelet_ml":
         model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint)
         model.swinViT.patch_embed = WaveletPatchEmbedML(
@@ -89,5 +74,5 @@ def build_model(
     else:
         raise ValueError(
             f"Unknown variant '{variant}'. Choose from: "
-            f"baseline, wavelet_a, wavelet_b, wavelet_ml"
+            f"baseline, wavelet_a, wavelet_ml"
         )
