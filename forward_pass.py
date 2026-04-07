@@ -8,20 +8,25 @@ ROOT = "MSLesSeg_Dataset"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
-                    choices=["baseline", "wavelet_a", "wavelet_ml"],
+                    choices=["baseline", "wavelet_a", "wavelet_ml",
+                             "wavelet_swt_skip", "wavelet_ml_swt"],
                     help="Model variant to smoke test")
 parser.add_argument("--wavelet", type=str, default="haar",
                     choices=["haar", "db2", "sym4"],
-                    help="Wavelet family — only used with --variant wavelet_ml")
+                    help="Wavelet family — only used with --variant wavelet_ml / wavelet_ml_swt")
 parser.add_argument("--levels", type=int, default=1,
                     choices=[1, 2, 3],
-                    help="Decomposition levels — only used with --variant wavelet_ml")
+                    help="Decomposition levels — only used with --variant wavelet_ml / wavelet_ml_swt")
+parser.add_argument("--swt_wavelet", type=str, default="haar",
+                    choices=["haar", "db2", "sym4"],
+                    help="Wavelet family for SWT skip injection — used with wavelet_swt_skip and wavelet_ml_swt")
 args = parser.parse_args()
 
 train_loader, _ = get_loaders(ROOT, TRAIN_PATIENTS, VAL_PATIENTS)
 
 model = build_model(args.variant, use_checkpoint=True,
-                    wavelet=args.wavelet, levels=args.levels).cuda()
+                    wavelet=args.wavelet, levels=args.levels,
+                    swt_wavelet=args.swt_wavelet).cuda()
 
 batch = next(iter(train_loader))
 
@@ -33,4 +38,8 @@ y = model(x)
 tag = args.variant
 if args.variant == "wavelet_ml":
     tag = f"wavelet_ml  wavelet={args.wavelet}  levels={args.levels}"
+elif args.variant == "wavelet_swt_skip":
+    tag = f"wavelet_swt_skip_{args.swt_wavelet}"
+elif args.variant == "wavelet_ml_swt":
+    tag = f"wavelet_ml_swt  wavelet={args.wavelet}  levels={args.levels}  swt_wavelet={args.swt_wavelet}"
 print(f"[{tag}] input: {x.shape}  output: {y.shape}")

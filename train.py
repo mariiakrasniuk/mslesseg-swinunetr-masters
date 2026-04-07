@@ -17,24 +17,33 @@ from splits import TRAIN_PATIENTS, VAL_PATIENTS
 # ------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
-                    choices=["baseline", "wavelet_a", "wavelet_ml"],
+                    choices=["baseline", "wavelet_a", "wavelet_ml",
+                             "wavelet_swt_skip", "wavelet_ml_swt"],
                     help="Model variant to train")
 parser.add_argument("--wavelet", type=str, default="haar",
                     choices=["haar", "db2", "sym4"],
-                    help="Wavelet family — only used with --variant wavelet_ml")
+                    help="Wavelet family — only used with --variant wavelet_ml / wavelet_ml_swt")
 parser.add_argument("--levels", type=int, default=1,
                     choices=[1, 2, 3],
-                    help="Decomposition levels — only used with --variant wavelet_ml")
+                    help="Decomposition levels — only used with --variant wavelet_ml / wavelet_ml_swt")
+parser.add_argument("--swt_wavelet", type=str, default="haar",
+                    choices=["haar", "db2", "sym4"],
+                    help="Wavelet family for SWT skip injection — used with wavelet_swt_skip and wavelet_ml_swt")
 args = parser.parse_args()
 
-VARIANT = args.variant
-WAVELET = args.wavelet
-LEVELS  = args.levels
+VARIANT    = args.variant
+WAVELET    = args.wavelet
+LEVELS     = args.levels
+SWT_WAVELET = args.swt_wavelet
 
 # Run name encodes variant + wavelet family + level for wavelet_ml experiments.
 # Legacy variants keep a flat name so existing checkpoints are not affected.
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
+elif VARIANT == "wavelet_swt_skip":
+    RUN_NAME = f"wavelet_swt_skip_{SWT_WAVELET}"
+elif VARIANT == "wavelet_ml_swt":
+    RUN_NAME = f"wavelet_ml_swt_{WAVELET}_l{LEVELS}"
 else:
     RUN_NAME = VARIANT
 
@@ -62,6 +71,10 @@ DICE_CURVE_PATH    = f"dice_curves_{RUN_NAME}.png"
 print(f"Variant : {VARIANT}")
 if VARIANT == "wavelet_ml":
     print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}")
+elif VARIANT == "wavelet_swt_skip":
+    print(f"SWT Wavelet: {SWT_WAVELET}")
+elif VARIANT == "wavelet_ml_swt":
+    print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}  |  SWT Wavelet: {SWT_WAVELET}")
 print(f"Run name: {RUN_NAME}")
 print(f"Best model will be saved to: {BEST_MODEL_PATH}")
 
@@ -76,7 +89,8 @@ train_loader, val_loader = get_loaders(
 # Model
 # ------------------
 model = build_model(VARIANT, use_checkpoint=True,
-                    wavelet=WAVELET, levels=LEVELS).to(DEVICE)
+                    wavelet=WAVELET, levels=LEVELS,
+                    swt_wavelet=SWT_WAVELET).to(DEVICE)
 
 # ------------------
 # Loss / Optim / Metrics

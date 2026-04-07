@@ -25,23 +25,32 @@ def get_test_loader(root):
 # ------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--variant", type=str, default="baseline",
-                    choices=["baseline", "wavelet_a", "wavelet_ml"],
+                    choices=["baseline", "wavelet_a", "wavelet_ml",
+                             "wavelet_swt_skip", "wavelet_ml_swt"],
                     help="Model variant to evaluate")
 parser.add_argument("--wavelet", type=str, default="haar",
                     choices=["haar", "db2", "sym4"],
-                    help="Wavelet family — only used with --variant wavelet_ml")
+                    help="Wavelet family — only used with --variant wavelet_ml / wavelet_ml_swt")
 parser.add_argument("--levels", type=int, default=1,
                     choices=[1, 2, 3],
-                    help="Decomposition levels — only used with --variant wavelet_ml")
+                    help="Decomposition levels — only used with --variant wavelet_ml / wavelet_ml_swt")
+parser.add_argument("--swt_wavelet", type=str, default="haar",
+                    choices=["haar", "db2", "sym4"],
+                    help="Wavelet family for SWT skip injection — used with wavelet_swt_skip and wavelet_ml_swt")
 args = parser.parse_args()
 
-VARIANT = args.variant
-WAVELET = args.wavelet
-LEVELS  = args.levels
+VARIANT     = args.variant
+WAVELET     = args.wavelet
+LEVELS      = args.levels
+SWT_WAVELET = args.swt_wavelet
 
 # Must match the naming logic in train.py
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
+elif VARIANT == "wavelet_swt_skip":
+    RUN_NAME = f"wavelet_swt_skip_{SWT_WAVELET}"
+elif VARIANT == "wavelet_ml_swt":
+    RUN_NAME = f"wavelet_ml_swt_{WAVELET}_l{LEVELS}"
 else:
     RUN_NAME = VARIANT
 
@@ -54,12 +63,17 @@ MODEL_PATH = f"best_{RUN_NAME}.pth"
 print(f"Variant : {VARIANT}")
 if VARIANT == "wavelet_ml":
     print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}")
+elif VARIANT == "wavelet_swt_skip":
+    print(f"SWT Wavelet: {SWT_WAVELET}")
+elif VARIANT == "wavelet_ml_swt":
+    print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}  |  SWT Wavelet: {SWT_WAVELET}")
 print(f"Run name: {RUN_NAME}")
 print(f"Loading weights from: {MODEL_PATH}")
 
 test_loader = get_test_loader(ROOT)
 
-model = build_model(VARIANT, wavelet=WAVELET, levels=LEVELS).to(DEVICE)
+model = build_model(VARIANT, wavelet=WAVELET, levels=LEVELS,
+                   swt_wavelet=SWT_WAVELET).to(DEVICE)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval()
 

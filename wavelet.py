@@ -364,3 +364,115 @@ class WaveletPatchEmbedML(nn.Module):
 
         x = torch.cat(all_bands, dim=1)   # [B, 8*actual_levels, D/2, H/2, W/2]
         return self.proj(x)
+
+
+class SWT3d(nn.Module):
+    """
+    Undecimated (Stationary) 3D Wavelet Transform — single level.
+
+    Unlike DWT3d, SWT3d uses stride=1 so the output spatial size is identical
+    to the input.  Circular padding is applied to each axis:
+
+        pad_l = (k - 1) // 2,  pad_r = k // 2
+
+    This ensures that the convolution sees a full neighbourhood at every
+    voxel without zero-padding artefacts, and that the output size equals the
+    input size exactly for any k.
+
+    Filters are the same separable 3-D analysis bank as DWT3d (8 sub-bands in
+    LLL/LLH/…/HHH order), built from the chosen 1-D wavelet family.
+    All filter weights are registered as non-trainable buffers.
+
+    Parameters
+    ----------
+    wavelet : str
+        One of 'haar', 'db2', 'sym4'.
+
+    Input  shape: [B, 1, D, H, W]
+    Output shape: [B, 8, D, H, W]  (same spatial size — no downsampling)
+    """
+
+    def __init__(self, wavelet: str = "haar"):
+        super().__init__()
+        if wavelet not in _WAVELET_FILTERS:
+            raise ValueError(
+                f"Unknown wavelet '{wavelet}'. "
+                f"Available: {list(_WAVELET_FILTERS)}"
+            )
+        lo_1d, hi_1d = _WAVELET_FILTERS[wavelet]
+        L = torch.tensor(lo_1d, dtype=torch.float32)
+        H = torch.tensor(hi_1d, dtype=torch.float32)
+
+        filters = []
+        for fd in (L, H):
+            for fh in (L, H):
+                for fw in (L, H):
+                    f3d = (fd[:, None, None]
+                           * fh[None, :, None]
+                           * fw[None, None, :])
+                    filters.append(f3d)
+
+        k = len(lo_1d)
+        weight = torch.stack(filters, dim=0).unsqueeze(1)  # [8, 1, k, k, k]
+        self.register_buffer("weight", weight)
+        self.pad_l: int = (k - 1) // 2
+        self.pad_r: int = k // 2
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.pad(
+            x,
+            (self.pad_l, self.pad_r,
+             self.pad_l, self.pad_r,
+             self.pad_l, self.pad_r),
+            mode="circular",
+        )
+        return F.conv3d(x, self.weight, stride=1, padding=0)
+
+
+class SWTSkipInjector(nn.Module):
+    """
+    Enriches an encoder skip connection with frequency information extracted
+    from the original input at the matching spatial scale.
+
+    For each skip connection, the original network input x_in is
+    adaptively pooled to the skip's spatial size (if needed), passed through
+    a stationary wavelet transform (SWT3d — no decimation), SE-recalibrated,
+    and projected to the skip's channel count.  The result is added residually
+    to the skip feature map.
+
+    This injects multi-frequency cues (edges, textures, coarse structure) into
+    the skip path without changing its spatial resolution, helping the decoder
+    refine predictions using raw frequency content rather than only learned
+    feature activations.
+
+    Parameters
+    ----------
+    skip_channels : int
+        Number of channels in the target skip connection (e.g. 48, 96, 192).
+    wavelet : str
+        Wavelet family passed to SWT3d — 'haar', 'db2', or 'sym4'.
+
+    Forward
+    -------
+    x_in  : [B, 1,             D_in,   H_in,   W_in  ]  — original network input
+    skip  : [B, skip_channels, D_skip, H_skip, W_skip ]  — encoder feature map
+    Returns skip + projected frequency features (same shape as skip).
+    """
+
+    def __init__(self, skip_channels: int, wavelet: str = "haar"):
+        super().__init__()
+        self.swt  = SWT3d(wavelet)
+        self.se   = SubBandSE(channels=8, reduction=2)
+        self.proj = nn.Conv3d(8, skip_channels, kernel_size=1, bias=True)
+
+    def forward(self, x_in: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
+        # Downsample input to match skip spatial size if needed
+        if x_in.shape[2:] != skip.shape[2:]:
+            x_down = F.adaptive_avg_pool3d(x_in, skip.shape[2:])
+        else:
+            x_down = x_in
+
+        freq = self.swt(x_down)   # [B, 8, D_skip, H_skip, W_skip]
+        freq = self.se(freq)
+        freq = self.proj(freq)    # [B, skip_channels, D_skip, H_skip, W_skip]
+        return skip + freq
