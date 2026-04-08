@@ -194,12 +194,13 @@ class WaveletPatchEmbed(nn.Module):
 
     def __init__(self, in_chans: int = 1, embed_dim: int = 48):
         super().__init__()
-        self.dwt = HaarDWT3d()
-        self.proj = nn.Conv3d(8, embed_dim, kernel_size=1, bias=True)
+        self.dwt  = HaarDWT3d()
+        self.proj = nn.Conv3d(8 * in_chans, embed_dim, kernel_size=1, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.dwt(x)   # [B, 8, D/2, H/2, W/2]
-        return self.proj(x)
+        # Apply DWT independently per input channel, then concatenate.
+        bands = torch.cat([self.dwt(x[:, c:c+1]) for c in range(x.shape[1])], dim=1)
+        return self.proj(bands)
 
 
 class HaarIDWT3d(nn.Module):
@@ -331,11 +332,12 @@ class WaveletPatchEmbedML(nn.Module):
         self.se_blocks = nn.ModuleList(
             [SubBandSE(channels=8, reduction=2) for _ in range(levels)]
         )
-        self.proj = nn.Conv3d(8 * levels, embed_dim, kernel_size=1, bias=True)
+        # Each input channel contributes 8*levels sub-bands.
+        self.proj = nn.Conv3d(in_chans * 8 * levels, embed_dim, kernel_size=1, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Cap to what spatial dims actually support
-        D, H, W = x.shape[2], x.shape[3], x.shape[4]
+        in_chans = x.shape[1]
+        D, H, W  = x.shape[2], x.shape[3], x.shape[4]
         actual_levels = min(
             self.levels,
             _max_dwt_levels(D),
@@ -343,26 +345,29 @@ class WaveletPatchEmbedML(nn.Module):
             _max_dwt_levels(W),
         )
 
-        target_size = None  # level-1 token resolution: D/2 × H/2 × W/2
-        all_bands = []
-        approx = x          # raw input [B, 1, D, H, W]
+        target_size = None   # set from first (level=1, channel=0) sub-band
+        all_bands   = []
 
-        for i in range(actual_levels):
-            sub = self.dwt(approx)        # [B, 8, D/2^(i+1), ...]
-            sub = self.se_blocks[i](sub)  # per-level SE recalibration
+        for c in range(in_chans):
+            approx = x[:, c:c+1]   # [B, 1, D, H, W]
+            for i in range(actual_levels):
+                sub = self.dwt(approx)        # [B, 8, D/2^(i+1), ...]
+                sub = self.se_blocks[i](sub)  # per-level SE recalibration
 
-            if i == 0:
-                target_size = sub.shape[2:]
-                all_bands.append(sub)
-            else:
-                all_bands.append(
-                    F.interpolate(sub, size=target_size,
-                                  mode="trilinear", align_corners=False)
-                )
+                if target_size is None:
+                    target_size = sub.shape[2:]
 
-            approx = sub[:, :1]           # LLL → input for next level
+                if sub.shape[2:] == target_size:
+                    all_bands.append(sub)
+                else:
+                    all_bands.append(
+                        F.interpolate(sub, size=target_size,
+                                      mode="trilinear", align_corners=False)
+                    )
 
-        x = torch.cat(all_bands, dim=1)   # [B, 8*actual_levels, D/2, H/2, W/2]
+                approx = sub[:, :1]   # LLL → input for next level
+
+        x = torch.cat(all_bands, dim=1)   # [B, in_chans*8*actual_levels, D/2, H/2, W/2]
         return self.proj(x)
 
 

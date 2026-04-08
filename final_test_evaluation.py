@@ -12,12 +12,16 @@ from build_datalist import build_test_list
 from transforms import get_val_transforms
 
 
-def get_test_loader(root):
-    test_data = build_test_list(root)
-    test_ds = Dataset(test_data, transform=get_val_transforms())
-    return DataLoader(
-        test_ds, batch_size=1, shuffle=False, num_workers=0
-    )
+def get_test_loader(root, multimodal: bool = False):
+    if multimodal:
+        from build_datalist import build_test_list_mm
+        from transforms import get_val_transforms_mm
+        test_data = build_test_list_mm(root)
+        test_ds   = Dataset(test_data, transform=get_val_transforms_mm())
+    else:
+        test_data = build_test_list(root)
+        test_ds   = Dataset(test_data, transform=get_val_transforms())
+    return DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=0)
 
 
 # ------------------
@@ -33,17 +37,28 @@ parser.add_argument("--wavelet", type=str, default="haar",
 parser.add_argument("--levels", type=int, default=1,
                     choices=[1, 2, 3],
                     help="Decomposition levels — only used with --variant wavelet_ml")
+parser.add_argument("--multimodal", action="store_true",
+                    help="Use FLAIR + T1 + T2 as input (3 channels)")
+parser.add_argument("--use_v2", action="store_true",
+                    help="Use SwinUNETR-V2")
 args = parser.parse_args()
 
-VARIANT = args.variant
-WAVELET = args.wavelet
-LEVELS  = args.levels
+VARIANT     = args.variant
+WAVELET     = args.wavelet
+LEVELS      = args.levels
+MULTIMODAL  = args.multimodal
+USE_V2      = args.use_v2
+IN_CHANNELS = 3 if MULTIMODAL else 1
 
 # Must match the naming logic in train.py
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
 else:
     RUN_NAME = VARIANT
+if MULTIMODAL:
+    RUN_NAME += "_mm"
+if USE_V2:
+    RUN_NAME += "_v2"
 
 ROOT = "MSLesSeg_Dataset"
 DEVICE = "cuda"
@@ -51,15 +66,17 @@ ROI_SIZE = (96, 96, 96)
 SW_BATCH_SIZE = 2
 MODEL_PATH = f"best_{RUN_NAME}.pth"
 
-print(f"Variant : {VARIANT}")
+print(f"Variant    : {VARIANT}")
 if VARIANT == "wavelet_ml":
-    print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}")
-print(f"Run name: {RUN_NAME}")
+    print(f"Wavelet    : {WAVELET}  |  Levels: {LEVELS}")
+print(f"Multimodal : {MULTIMODAL}  |  SwinV2: {USE_V2}  |  in_channels: {IN_CHANNELS}")
+print(f"Run name   : {RUN_NAME}")
 print(f"Loading weights from: {MODEL_PATH}")
 
-test_loader = get_test_loader(ROOT)
+test_loader = get_test_loader(ROOT, multimodal=MULTIMODAL)
 
-model = build_model(VARIANT, wavelet=WAVELET, levels=LEVELS).to(DEVICE)
+model = build_model(VARIANT, in_channels=IN_CHANNELS,
+                    wavelet=WAVELET, levels=LEVELS, use_v2=USE_V2).to(DEVICE)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval()
 

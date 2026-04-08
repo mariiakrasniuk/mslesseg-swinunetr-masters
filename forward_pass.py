@@ -16,12 +16,19 @@ parser.add_argument("--wavelet", type=str, default="haar",
 parser.add_argument("--levels", type=int, default=1,
                     choices=[1, 2, 3],
                     help="Decomposition levels — only used with --variant wavelet_ml")
+parser.add_argument("--multimodal", action="store_true",
+                    help="Use FLAIR + T1 + T2 as input (3 channels)")
+parser.add_argument("--use_v2", action="store_true",
+                    help="Use SwinUNETR-V2")
 args = parser.parse_args()
 
-train_loader, _ = get_loaders(ROOT, TRAIN_PATIENTS, VAL_PATIENTS)
+in_channels = 3 if args.multimodal else 1
+train_loader, _ = get_loaders(ROOT, TRAIN_PATIENTS, VAL_PATIENTS,
+                               multimodal=args.multimodal)
 
-model = build_model(args.variant, use_checkpoint=True,
-                    wavelet=args.wavelet, levels=args.levels).cuda()
+model = build_model(args.variant, in_channels=in_channels, use_checkpoint=True,
+                    wavelet=args.wavelet, levels=args.levels,
+                    use_v2=args.use_v2).cuda()
 
 batch = next(iter(train_loader))
 

@@ -8,13 +8,14 @@ from wavelet import (
 
 
 def _base_swinunetr(in_channels: int, out_channels: int, feature_size: int,
-                    use_checkpoint: bool) -> nn.Module:
+                    use_checkpoint: bool, use_v2: bool = False) -> nn.Module:
     return SwinUNETR(
         spatial_dims=3,
         in_channels=in_channels,
         out_channels=out_channels,
         feature_size=feature_size,
         use_checkpoint=use_checkpoint,
+        use_v2=use_v2,
     )
 
 
@@ -28,6 +29,7 @@ def build_model(
     roi_size: int = 96,
     wavelet: str = "haar",
     levels: int = 1,
+    use_v2: bool = False,
 ) -> nn.Module:
     """
     Factory that returns the model for a given variant name.
@@ -55,17 +57,17 @@ def build_model(
 
     """
     if variant == "baseline":
-        return _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint)
+        return _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint, use_v2)
 
     elif variant == "wavelet_a":
-        model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint)
+        model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint, use_v2)
         model.swinViT.patch_embed = WaveletPatchEmbed(
             in_chans=in_channels, embed_dim=feature_size
         )
         return model
 
     elif variant == "wavelet_ml":
-        model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint)
+        model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint, use_v2)
         model.swinViT.patch_embed = WaveletPatchEmbedML(
             in_chans=in_channels, embed_dim=feature_size,
             levels=levels, wavelet=wavelet,

@@ -1,20 +1,26 @@
 from torch.utils.data import DataLoader
 from monai.data import Dataset
-from build_datalist import build_train_list
-from transforms import get_train_transforms, get_val_transforms
+from build_datalist import build_train_list, build_train_list_mm
+from transforms import (
+    get_train_transforms, get_val_transforms,
+    get_train_transforms_mm, get_val_transforms_mm,
+)
 
-def get_loaders(root, train_patients, val_patients):
-    train_data = build_train_list(root, train_patients)
-    val_data   = build_train_list(root, val_patients)
 
-    train_ds = Dataset(train_data, transform=get_train_transforms())
-    val_ds   = Dataset(val_data, transform=get_val_transforms())
+def get_loaders(root, train_patients, val_patients, multimodal: bool = False):
+    if multimodal:
+        build = build_train_list_mm
+        train_tf = get_train_transforms_mm()
+        val_tf   = get_val_transforms_mm()
+    else:
+        build = build_train_list
+        train_tf = get_train_transforms()
+        val_tf   = get_val_transforms()
 
-    train_loader = DataLoader(
-        train_ds, batch_size=1, shuffle=True, num_workers=0
-    )
-    val_loader = DataLoader(
-        val_ds, batch_size=1, shuffle=False, num_workers=0
-    )
+    train_ds = Dataset(build(root, train_patients), transform=train_tf)
+    val_ds   = Dataset(build(root, val_patients),   transform=val_tf)
+
+    train_loader = DataLoader(train_ds, batch_size=1, shuffle=True,  num_workers=0)
+    val_loader   = DataLoader(val_ds,   batch_size=1, shuffle=False, num_workers=0)
 
     return train_loader, val_loader

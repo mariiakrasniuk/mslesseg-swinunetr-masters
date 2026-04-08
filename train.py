@@ -25,17 +25,28 @@ parser.add_argument("--wavelet", type=str, default="haar",
 parser.add_argument("--levels", type=int, default=1,
                     choices=[1, 2, 3],
                     help="Decomposition levels — only used with --variant wavelet_ml")
+parser.add_argument("--multimodal", action="store_true",
+                    help="Use FLAIR + T1 + T2 as input (3 channels)")
+parser.add_argument("--use_v2", action="store_true",
+                    help="Use SwinUNETR-V2 (residual conv blocks in each Swin stage)")
 args = parser.parse_args()
 
-VARIANT = args.variant
-WAVELET = args.wavelet
-LEVELS  = args.levels
+VARIANT     = args.variant
+WAVELET     = args.wavelet
+LEVELS      = args.levels
+MULTIMODAL  = args.multimodal
+USE_V2      = args.use_v2
+IN_CHANNELS = 3 if MULTIMODAL else 1
 
-# Run name encodes variant + wavelet family + level for wavelet_ml experiments.
+# Run name encodes variant + wavelet family + level + modality + architecture
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
 else:
     RUN_NAME = VARIANT
+if MULTIMODAL:
+    RUN_NAME += "_mm"
+if USE_V2:
+    RUN_NAME += "_v2"
 
 # ------------------
 # Config
@@ -58,24 +69,25 @@ HISTORY_PATH       = f"training_history_{RUN_NAME}.pth"
 LOSS_CURVE_PATH    = f"loss_curves_{RUN_NAME}.png"
 DICE_CURVE_PATH    = f"dice_curves_{RUN_NAME}.png"
 
-print(f"Variant : {VARIANT}")
+print(f"Variant    : {VARIANT}")
 if VARIANT == "wavelet_ml":
-    print(f"Wavelet : {WAVELET}  |  Levels: {LEVELS}")
-print(f"Run name: {RUN_NAME}")
+    print(f"Wavelet    : {WAVELET}  |  Levels: {LEVELS}")
+print(f"Multimodal : {MULTIMODAL}  |  SwinV2: {USE_V2}  |  in_channels: {IN_CHANNELS}")
+print(f"Run name   : {RUN_NAME}")
 print(f"Best model will be saved to: {BEST_MODEL_PATH}")
 
 # ------------------
 # Data
 # ------------------
 train_loader, val_loader = get_loaders(
-    ROOT, TRAIN_PATIENTS, VAL_PATIENTS
+    ROOT, TRAIN_PATIENTS, VAL_PATIENTS, multimodal=MULTIMODAL
 )
 
 # ------------------
 # Model
 # ------------------
-model = build_model(VARIANT, use_checkpoint=True,
-                    wavelet=WAVELET, levels=LEVELS).to(DEVICE)
+model = build_model(VARIANT, in_channels=IN_CHANNELS, use_checkpoint=True,
+                    wavelet=WAVELET, levels=LEVELS, use_v2=USE_V2).to(DEVICE)
 
 # ------------------
 # Loss / Optim / Metrics
