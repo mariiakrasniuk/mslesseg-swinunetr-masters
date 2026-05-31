@@ -29,6 +29,12 @@ parser.add_argument("--multimodal", action="store_true",
                     help="Use FLAIR + T1 + T2 as input (3 channels)")
 parser.add_argument("--use_v2", action="store_true",
                     help="Use SwinUNETR-V2 (residual conv blocks in each Swin stage)")
+parser.add_argument("--aug", type=str, default="none",
+                    choices=["none", "image", "coeff", "both"],
+                    help="Augmentation strategy: none (current baseline), "
+                         "image (intensity transforms in data pipeline), "
+                         "coeff (frequency-domain perturbations inside wavelet embed), "
+                         "both (image + coeff)")
 args = parser.parse_args()
 
 VARIANT     = args.variant
@@ -36,9 +42,13 @@ WAVELET     = args.wavelet
 LEVELS      = args.levels
 MULTIMODAL  = args.multimodal
 USE_V2      = args.use_v2
+AUG         = args.aug
 IN_CHANNELS = 3 if MULTIMODAL else 1
 
-# Run name encodes variant + wavelet family + level + modality + architecture
+INTENSITY_AUG = AUG in ("image", "both")
+COEFF_AUG     = AUG in ("coeff", "both")
+
+# Run name encodes variant + wavelet family + level + modality + architecture + aug
 if VARIANT == "wavelet_ml":
     RUN_NAME = f"wavelet_ml_{WAVELET}_l{LEVELS}"
 else:
@@ -47,6 +57,8 @@ if MULTIMODAL:
     RUN_NAME += "_mm"
 if USE_V2:
     RUN_NAME += "_v2"
+if AUG != "none":
+    RUN_NAME += f"_aug_{AUG}"
 
 # ------------------
 # Config
@@ -73,6 +85,7 @@ print(f"Variant    : {VARIANT}")
 if VARIANT == "wavelet_ml":
     print(f"Wavelet    : {WAVELET}  |  Levels: {LEVELS}")
 print(f"Multimodal : {MULTIMODAL}  |  SwinV2: {USE_V2}  |  in_channels: {IN_CHANNELS}")
+print(f"Aug        : {AUG}  |  intensity_aug={INTENSITY_AUG}  coeff_aug={COEFF_AUG}")
 print(f"Run name   : {RUN_NAME}")
 print(f"Best model will be saved to: {BEST_MODEL_PATH}")
 
@@ -80,14 +93,16 @@ print(f"Best model will be saved to: {BEST_MODEL_PATH}")
 # Data
 # ------------------
 train_loader, val_loader = get_loaders(
-    ROOT, TRAIN_PATIENTS, VAL_PATIENTS, multimodal=MULTIMODAL
+    ROOT, TRAIN_PATIENTS, VAL_PATIENTS,
+    multimodal=MULTIMODAL, intensity_aug=INTENSITY_AUG,
 )
 
 # ------------------
 # Model
 # ------------------
 model = build_model(VARIANT, in_channels=IN_CHANNELS, use_checkpoint=True,
-                    wavelet=WAVELET, levels=LEVELS, use_v2=USE_V2).to(DEVICE)
+                    wavelet=WAVELET, levels=LEVELS, use_v2=USE_V2,
+                    coeff_aug=COEFF_AUG).to(DEVICE)
 
 # ------------------
 # Loss / Optim / Metrics

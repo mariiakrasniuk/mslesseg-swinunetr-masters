@@ -30,6 +30,7 @@ def build_model(
     wavelet: str = "haar",
     levels: int = 1,
     use_v2: bool = False,
+    coeff_aug: bool = False,
 ) -> nn.Module:
     """
     Factory that returns the model for a given variant name.
@@ -70,7 +71,7 @@ def build_model(
         model = _base_swinunetr(in_channels, out_channels, feature_size, use_checkpoint, use_v2)
         model.swinViT.patch_embed = WaveletPatchEmbedML(
             in_chans=in_channels, embed_dim=feature_size,
-            levels=levels, wavelet=wavelet,
+            levels=levels, wavelet=wavelet, coeff_aug=coeff_aug,
         )
         return model
 

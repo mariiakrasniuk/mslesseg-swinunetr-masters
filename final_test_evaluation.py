@@ -41,6 +41,9 @@ parser.add_argument("--multimodal", action="store_true",
                     help="Use FLAIR + T1 + T2 as input (3 channels)")
 parser.add_argument("--use_v2", action="store_true",
                     help="Use SwinUNETR-V2")
+parser.add_argument("--aug", type=str, default="none",
+                    choices=["none", "image", "coeff", "both"],
+                    help="Must match the --aug used during training (affects run name / checkpoint path)")
 args = parser.parse_args()
 
 VARIANT     = args.variant
@@ -48,7 +51,9 @@ WAVELET     = args.wavelet
 LEVELS      = args.levels
 MULTIMODAL  = args.multimodal
 USE_V2      = args.use_v2
+AUG         = args.aug
 IN_CHANNELS = 3 if MULTIMODAL else 1
+COEFF_AUG   = AUG in ("coeff", "both")
 
 # Must match the naming logic in train.py
 if VARIANT == "wavelet_ml":
@@ -59,6 +64,8 @@ if MULTIMODAL:
     RUN_NAME += "_mm"
 if USE_V2:
     RUN_NAME += "_v2"
+if AUG != "none":
+    RUN_NAME += f"_aug_{AUG}"
 
 ROOT = "MSLesSeg_Dataset"
 DEVICE = "cuda"
@@ -76,7 +83,8 @@ print(f"Loading weights from: {MODEL_PATH}")
 test_loader = get_test_loader(ROOT, multimodal=MULTIMODAL)
 
 model = build_model(VARIANT, in_channels=IN_CHANNELS,
-                    wavelet=WAVELET, levels=LEVELS, use_v2=USE_V2).to(DEVICE)
+                    wavelet=WAVELET, levels=LEVELS, use_v2=USE_V2,
+                    coeff_aug=COEFF_AUG).to(DEVICE)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval()
 

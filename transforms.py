@@ -1,7 +1,8 @@
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, Orientationd,
     Spacingd, NormalizeIntensityd, RandCropByPosNegLabeld,
-    RandFlipd, EnsureTyped, ConcatItemsd, DeleteItemsd,
+    RandFlipd, RandScaleIntensityd, RandShiftIntensityd,
+    RandGaussianNoised, EnsureTyped, ConcatItemsd, DeleteItemsd,
 )
 
 _MM = ["flair", "t1", "t2"]   # multimodal key names
@@ -11,8 +12,8 @@ _MM = ["flair", "t1", "t2"]   # multimodal key names
 # Single-modality (FLAIR only)
 # ------------------------------------------------------------------
 
-def get_train_transforms():
-    return Compose([
+def get_train_transforms(intensity_aug: bool = False):
+    transforms = [
         LoadImaged(keys=["image", "label"]),
         EnsureChannelFirstd(keys=["image", "label"]),
         Orientationd(keys=["image", "label"], axcodes="RAS"),
@@ -26,8 +27,17 @@ def get_train_transforms():
             pos=1, neg=1, num_samples=4,
         ),
         RandFlipd(keys=["image", "label"], spatial_axis=0, prob=0.5),
-        EnsureTyped(keys=["image", "label"]),
-    ])
+        RandFlipd(keys=["image", "label"], spatial_axis=1, prob=0.5),
+        RandFlipd(keys=["image", "label"], spatial_axis=2, prob=0.5),
+    ]
+    if intensity_aug:
+        transforms += [
+            RandScaleIntensityd(keys="image", factors=0.1, prob=0.5),
+            RandShiftIntensityd(keys="image", offsets=0.1, prob=0.5),
+            RandGaussianNoised(keys="image", prob=0.2, std=0.05),
+        ]
+    transforms.append(EnsureTyped(keys=["image", "label"]))
+    return Compose(transforms)
 
 
 def get_val_transforms():
@@ -48,8 +58,8 @@ def get_val_transforms():
 # concatenated along the channel dim into a single "image" tensor.
 # ------------------------------------------------------------------
 
-def get_train_transforms_mm():
-    return Compose([
+def get_train_transforms_mm(intensity_aug: bool = False):
+    transforms = [
         LoadImaged(keys=_MM + ["label"]),
         EnsureChannelFirstd(keys=_MM + ["label"]),
         Orientationd(keys=_MM + ["label"], axcodes="RAS"),
@@ -65,8 +75,17 @@ def get_train_transforms_mm():
             pos=1, neg=1, num_samples=4,
         ),
         RandFlipd(keys=["image", "label"], spatial_axis=0, prob=0.5),
-        EnsureTyped(keys=["image", "label"]),
-    ])
+        RandFlipd(keys=["image", "label"], spatial_axis=1, prob=0.5),
+        RandFlipd(keys=["image", "label"], spatial_axis=2, prob=0.5),
+    ]
+    if intensity_aug:
+        transforms += [
+            RandScaleIntensityd(keys="image", factors=0.1, prob=0.5),
+            RandShiftIntensityd(keys="image", offsets=0.1, prob=0.5),
+            RandGaussianNoised(keys="image", prob=0.2, std=0.05),
+        ]
+    transforms.append(EnsureTyped(keys=["image", "label"]))
+    return Compose(transforms)
 
 
 def get_val_transforms_mm():

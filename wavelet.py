@@ -325,9 +325,13 @@ class WaveletPatchEmbedML(nn.Module):
     """
 
     def __init__(self, in_chans: int = 1, embed_dim: int = 48, levels: int = 5,
-                 wavelet: str = "haar"):
+                 wavelet: str = "haar", coeff_aug: bool = False,
+                 noise_std: float = 0.05, scale_delta: float = 0.1):
         super().__init__()
         self.levels = levels
+        self.coeff_aug = coeff_aug
+        self.noise_std = noise_std
+        self.scale_delta = scale_delta
         self.dwt = DWT3d(wavelet)
         self.se_blocks = nn.ModuleList(
             [SubBandSE(channels=8, reduction=2) for _ in range(levels)]
@@ -352,6 +356,21 @@ class WaveletPatchEmbedML(nn.Module):
             approx = x[:, c:c+1]   # [B, 1, D, H, W]
             for i in range(actual_levels):
                 sub = self.dwt(approx)        # [B, 8, D/2^(i+1), ...]
+
+                if self.training and self.coeff_aug:
+                    B_s, device = sub.shape[0], sub.device
+                    approx_part = sub[:, :1]   # LLL — low-frequency approximation
+                    detail_part = sub[:, 1:]   # LLH…HHH — detail / edge bands
+                    # Approx scaling: simulates MRI bias field (low-frequency global shift)
+                    if torch.rand(1).item() < 0.5:
+                        scale = 1.0 + (torch.rand(B_s, 1, 1, 1, 1, device=device) * 2 - 1) * self.scale_delta
+                        approx_part = approx_part * scale
+                    # Detail noise: simulates MRI thermal noise (high-frequency, spatially varying)
+                    if torch.rand(1).item() < 0.5:
+                        noise = torch.randn_like(detail_part) * self.noise_std
+                        detail_part = detail_part + noise
+                    sub = torch.cat([approx_part, detail_part], dim=1)
+
                 sub = self.se_blocks[i](sub)  # per-level SE recalibration
 
                 if target_size is None:

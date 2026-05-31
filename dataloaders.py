@@ -7,14 +7,15 @@ from transforms import (
 )
 
 
-def get_loaders(root, train_patients, val_patients, multimodal: bool = False):
+def get_loaders(root, train_patients, val_patients, multimodal: bool = False,
+                intensity_aug: bool = False):
     if multimodal:
         build = build_train_list_mm
-        train_tf = get_train_transforms_mm()
+        train_tf = get_train_transforms_mm(intensity_aug=intensity_aug)
         val_tf   = get_val_transforms_mm()
     else:
         build = build_train_list
-        train_tf = get_train_transforms()
+        train_tf = get_train_transforms(intensity_aug=intensity_aug)
         val_tf   = get_val_transforms()
 
     train_ds = Dataset(build(root, train_patients), transform=train_tf)
