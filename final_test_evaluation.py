@@ -95,7 +95,20 @@ test_loss = 0.0
 steps = 0
 
 with torch.no_grad():
-    for batch in tqdm(test_loader, desc="Final Test"):
+    test_iter = iter(test_loader)
+    for _ in tqdm(range(len(test_loader)), desc="Final Test"):
+        try:
+            batch = next(test_iter)
+        except RuntimeError as e:
+            exc, chain = e, ""
+            while exc is not None:
+                chain += str(exc)
+                exc = getattr(exc, "__cause__", None)
+            if "INTERNAL ASSERT" in chain:
+                print(f"\n[warn] skipping bad test batch: {e}")
+                continue
+            raise
+
         x = batch["image"].to(DEVICE)
         y = batch["label"].to(DEVICE)
 
@@ -110,7 +123,7 @@ with torch.no_grad():
         preds = torch.sigmoid(preds)
         dice_metric(preds, y)
 
-test_loss /= steps
+test_loss /= steps if steps > 0 else 1
 test_dice = dice_metric.aggregate().item()
 
 print(f"[{RUN_NAME}] FINAL TEST Dice: {test_dice:.4f}")

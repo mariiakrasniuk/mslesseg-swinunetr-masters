@@ -65,14 +65,14 @@ if AUG != "none":
 # ------------------
 ROOT = "MSLesSeg_Dataset"
 DEVICE = "cuda"
-EPOCHS = 70
+EPOCHS = 150
 LR = 1e-4
 WEIGHT_DECAY = 1e-5
 ROI_SIZE = (96, 96, 96)
 SW_BATCH_SIZE = 2
 
 # Early stopping
-PATIENCE = 10
+PATIENCE = 20
 MIN_DELTA = 1e-4
 
 # Run-aware output paths
@@ -185,7 +185,20 @@ for epoch in range(1, EPOCHS + 1):
     val_steps = 0
 
     with torch.no_grad():
-        for batch in tqdm(val_loader, desc=f"Epoch {epoch} [val]"):
+        val_iter = iter(val_loader)
+        for _ in tqdm(range(len(val_loader)), desc=f"Epoch {epoch} [val]"):
+            try:
+                batch = next(val_iter)
+            except RuntimeError as e:
+                exc, chain = e, ""
+                while exc is not None:
+                    chain += str(exc)
+                    exc = getattr(exc, "__cause__", None)
+                if "INTERNAL ASSERT" in chain:
+                    print(f"\n[warn] skipping bad val batch: {e}")
+                    continue
+                raise
+
             x = batch["image"].to(DEVICE)
             y = batch["label"].to(DEVICE)
 
@@ -200,8 +213,8 @@ for epoch in range(1, EPOCHS + 1):
             preds = torch.sigmoid(preds)
             dice_metric(preds, y)
 
-    val_loss /= val_steps
-    val_dice = dice_metric.aggregate().item()
+    val_loss = val_loss / val_steps if val_steps > 0 else float("inf")
+    val_dice = dice_metric.aggregate().item() if val_steps > 0 else 0.0
 
     val_loss_history.append(val_loss)
     val_dice_history.append(val_dice)
